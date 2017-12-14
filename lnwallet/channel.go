@@ -2246,8 +2246,8 @@ func (lc *LightningChannel) closeObserver(channelCloseNtfn *chainntnfs.SpendEven
 			CloseType:      channeldb.BreachClose,
 			IsPending:      true,
 		}
-		err = lc.DeleteState(&closeSummary)
 
+		err = lc.DeleteState(&closeSummary)
 		if err != nil {
 			walletLog.Errorf("unable to delete channel state: %v", err)
 			return

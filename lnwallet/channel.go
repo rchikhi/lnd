@@ -2217,8 +2217,11 @@ func (lc *LightningChannel) closeObserver(channelCloseNtfn *chainntnfs.SpendEven
 			return
 		}
 
+		// Wait for the breach arbiter to ACK the handoff before marking
+		// the channel as pending force closed in channeldb.
 		select {
 		case err := <-retribution.Err:
+			// Bail if the handoff failed.
 			if err != nil {
 				walletLog.Errorf("unable to handoff "+
 					"retribution info: %v", err)
@@ -2231,8 +2234,8 @@ func (lc *LightningChannel) closeObserver(channelCloseNtfn *chainntnfs.SpendEven
 		}
 
 		// At this point, we've successfully received an ack for the
-		// breach close, so we reacquire the channel's mutex and write
-		// the close summary to disk.
+		// breach close. We now construct and persist  the close
+		// summary, marking the channel as pending force closed.
 		settledBalance := lc.channelState.LocalCommitment.
 			LocalBalance.ToSatoshis()
 		closeSummary := channeldb.ChannelCloseSummary{

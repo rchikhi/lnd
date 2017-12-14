@@ -297,7 +297,7 @@ func (l *channelLink) Stop() {
 // we know the remote party's next revocation point. Otherwise, we can't
 // initiate new channel state.
 func (l *channelLink) EligibleToForward() bool {
-	return l.channel.RemoteNextRevocation() != nil
+	return !l.channel.IsBorked() && l.channel.RemoteNextRevocation() != nil
 }
 
 // sampleNetworkFee samples the current fee rate on the network to get into the

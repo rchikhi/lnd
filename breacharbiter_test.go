@@ -1168,10 +1168,6 @@ func assertPendingClosed(t *testing.T, c *lnwallet.LightningChannel) {
 	}
 
 	for _, chanSummary := range closedChans {
-		if !chanSummary.IsPending {
-			continue
-		}
-
 		if chanSummary.ChanPoint == *c.ChanPoint {
 			return
 		}

@@ -1156,6 +1156,25 @@ func testChannelForceClosure(net *networkHarness, t *harnessTest) {
 		return aliceChannelInfo.Channels[0], nil
 	}
 
+	// Open up a payment stream to Alice that we'll use to send payment to
+	// Carol. We also create a small helper function to send payments to
+	// Carol, consuming the payment hashes we generated above.
+	alicePayStream, err := net.Alice.SendPayment(ctxb)
+	if err != nil {
+		t.Fatalf("unable to create payment stream for alice: %v", err)
+	}
+	sendPayments := func(start, stop int) error {
+		for i := start; i < stop; i++ {
+			sendReq := &lnrpc.SendRequest{
+				PaymentRequest: carolPaymentReqs[i],
+			}
+			if err := alicePayStream.Send(sendReq); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
 	// Fetch starting height of this test so we can compute the block
 	// heights we expect certain events to take place.
 	_, curHeight, err := net.Miner.Node.GetBestBlock()
@@ -1175,9 +1194,7 @@ func testChannelForceClosure(net *networkHarness, t *harnessTest) {
 	// Send payments from Alice to Carol, since Carol is htlchodl mode,
 	// the htlc outputs should be left unsettled, and should be swept by the
 	// utxo nursery.
-	ctxt, _ = context.WithTimeout(ctxb, timeout)
-	err = completePaymentRequests(ctxt, net.Alice, carolPaymentReqs, false)
-	if err != nil {
+	if err := sendPayments(0, numInvoices); err != nil {
 		t.Fatalf("unable to send payment: %v", err)
 	}
 	time.Sleep(200 * time.Millisecond)
@@ -2747,18 +2764,7 @@ func testRevokedCloseRetribution(net *networkHarness, t *harnessTest) {
 		t.Fatalf("justice tx wasn't mined")
 	}
 
-	// Finally, obtain Alice's channel state, she shouldn't report any
-	// channel as she just successfully brought Bob to justice by sweeping
-	// all the channel funds.
-	req := &lnrpc.ListChannelsRequest{}
-	aliceChanInfo, err := net.Alice.ListChannels(ctxb, req)
-	if err != nil {
-		t.Fatalf("unable to query for alice's channels: %v", err)
-	}
-	if len(aliceChanInfo.Channels) != 0 {
-		t.Fatalf("alice shouldn't have a channel: %v",
-			spew.Sdump(aliceChanInfo.Channels))
-	}
+	assertNumChannels(t, ctxb, net.Alice, 0)
 }
 
 // testRevokedCloseRetributionZeroValueRemoteOutput tests that Alice is able
@@ -2978,18 +2984,7 @@ func testRevokedCloseRetributionZeroValueRemoteOutput(
 		t.Fatalf("justice tx wasn't mined")
 	}
 
-	// Finally, obtain Alice's channel state, she shouldn't report any
-	// channel as she just successfully brought Carol to justice by sweeping
-	// all the channel funds.
-	req := &lnrpc.ListChannelsRequest{}
-	aliceChanInfo, err := net.Alice.ListChannels(ctxb, req)
-	if err != nil {
-		t.Fatalf("unable to query for alice's channels: %v", err)
-	}
-	if len(aliceChanInfo.Channels) != 0 {
-		t.Fatalf("alice shouldn't have a channel: %v",
-			spew.Sdump(aliceChanInfo.Channels))
-	}
+	assertNumChannels(t, ctxb, net.Alice, 0)
 }
 
 // testRevokedCloseRetributionRemoteHodl tests that Alice properly responds to a
@@ -3277,17 +3272,36 @@ func testRevokedCloseRetributionRemoteHodl(
 		t.Fatalf("justice tx wasn't mined")
 	}
 
-	// Finally, obtain Alice's channel state, she shouldn't report any
-	// channel as she just successfully brought Carol to justice by sweeping
-	// all the channel funds.
-	req := &lnrpc.ListChannelsRequest{}
-	aliceChanInfo, err := net.Alice.ListChannels(ctxb, req)
-	if err != nil {
-		t.Fatalf("unable to query for alice's channels: %v", err)
-	}
-	if len(aliceChanInfo.Channels) != 0 {
-		t.Fatalf("alice shouldn't have a channel: %v",
-			spew.Sdump(aliceChanInfo.Channels))
+	assertNumChannels(t, ctxb, net.Alice, 0)
+}
+
+// assertNumChannels polls the provided node's list channels rpc until it
+// reaches the desired number of total channels, failing after 10 tries if the
+// expected number was not found.
+func assertNumChannels(t *harnessTest, ctxb context.Context, node *lightningNode, numChannels int) {
+	const nretries = 10
+	for i := 0; i < nretries; i++ {
+		if i > 0 {
+			time.Sleep(200 * time.Millisecond)
+		}
+
+		// Finally, obtain Alice's channel state, she shouldn't report
+		// any channel as she just successfully brought Carol to justice
+		// by sweeping all the channel funds.
+		req := &lnrpc.ListChannelsRequest{}
+		aliceChanInfo, err := node.ListChannels(ctxb, req)
+		if err != nil {
+			t.Fatalf("unable to query for alice's channels: %v", err)
+		}
+
+		if len(aliceChanInfo.Channels) == numChannels {
+			return
+		}
+
+		if i == nretries-1 {
+			t.Fatalf("alice shouldn't have a channel: %v",
+				spew.Sdump(aliceChanInfo.Channels))
+		}
 	}
 }
 

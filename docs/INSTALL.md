@@ -67,6 +67,8 @@ git pull && glide install
 go install . ./cmd/...
 ```
 
+If the `glide install` step fails (e.g. with `Failed to set version` messages), type `glide cc && glide update`.
+
 **Tests**
 
 To check that `lnd` was installed properly run the following command:
